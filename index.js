@@ -61,7 +61,20 @@ app.get('/api/users', async (req, res) => {
     res.status(500).json({ error: "Lỗi lấy dữ liệu" });
   }
 });
-
+// Thêm API lấy 1 user theo ID để nộp cho thầy
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows] = await pool.query("SELECT * FROM users WHERE id = ?", [id]);
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Không tìm thấy user này" });
+    }
+    res.json(rows[0]); // Trả về đúng 1 user
+  } catch (err) {
+    res.status(500).json({ error: "Lỗi lấy dữ liệu" });
+  }
+});
 app.put('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
