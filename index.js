@@ -96,3 +96,7 @@ app.listen(PORT, () => {
 
 // DÒNG NÀY ĐỂ VERCEL CHẠY ĐƯỢC API
 module.exports = app;
+// Lời chào khi truy cập link gốc
+app.get('/', (req, res) => {
+  res.send("🎉 Chào mừng đến với Backend API của Nền tảng Video Bài Giảng! Hãy gõ thêm /api/users trên thanh địa chỉ để xem dữ liệu nhé.");
+});
