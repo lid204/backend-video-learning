@@ -72,7 +72,7 @@ app.get('/api/users/:id', async (req, res) => {
     }
     res.json(rows[0]); // Trả về đúng 1 user
   } catch (err) {
-    res.status(500).json({ error: "Lỗi lấy dữ liệu", chitiet: err.message });
+    res.status(500).json({ error: "Lỗi lấy dữ liệu" });
   }
 });
 app.put('/api/users/:id', async (req, res) => {
