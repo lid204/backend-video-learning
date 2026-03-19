@@ -14,25 +14,82 @@ const pool = mysql.createPool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  ssl: { rejectUnauthorized: false }
+  ssl: { rejectUnauthorized: false },
+  multipleStatements: true // BẮT BUỘC CÓ: Cho phép chạy 1 cục SQL dài cùng lúc
 });
 
 pool.getConnection()
   .then(async (connection) => {
-    console.log("✅ Đã kết nối thành công với MySQL Aiven Online!");
+    console.log("✅ Đã kết nối MySQL! Đang khởi tạo bộ Database chuẩn...");
+    
+    // Chạy cục SQL tạo 6 bảng (Bỏ qua nếu đã có)
     await connection.query(`
+      CREATE TABLE IF NOT EXISTS categories (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(100) NOT NULL,
+          description TEXT
+      );
+
       CREATE TABLE IF NOT EXISTS users (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(100) NOT NULL,
-        email VARCHAR(100) UNIQUE NOT NULL,
-        phone VARCHAR(20)
-      )
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(100) NOT NULL,
+          email VARCHAR(100) UNIQUE NOT NULL,
+          password VARCHAR(255) NOT NULL DEFAULT '123456',
+          phone VARCHAR(20),
+          role ENUM('student', 'teacher', 'admin') DEFAULT 'student',
+          avatar_url VARCHAR(255),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS courses (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          description TEXT,
+          thumbnail_url VARCHAR(255),
+          teacher_id INT NOT NULL,
+          category_id INT,
+          price DECIMAL(10,2) DEFAULT 0.00,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS lessons (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          course_id INT NOT NULL,
+          title VARCHAR(255) NOT NULL,
+          video_url VARCHAR(255) NOT NULL,
+          duration INT,
+          lesson_order INT DEFAULT 1,
+          FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS enrollments (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          user_id INT NOT NULL,
+          course_id INT NOT NULL,
+          progress_percent INT DEFAULT 0,
+          enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+          UNIQUE(user_id, course_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS reviews (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          user_id INT NOT NULL,
+          course_id INT NOT NULL,
+          rating INT CHECK (rating >= 1 AND rating <= 5),
+          comment TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
+      );
     `);
-    console.log("✅ Bảng users đã sẵn sàng!");
+    console.log("✅ Toàn bộ 6 bảng Database đã sẵn sàng trên mạng!");
     connection.release();
   })
   .catch((err) => console.error("❌ Lỗi kết nối MySQL:", err));
-
 // API Lấy TẤT CẢ
 app.get('/api/users', async (req, res) => {
   try {
