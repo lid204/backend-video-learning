@@ -157,3 +157,22 @@ module.exports = app;
 app.get('/', (req, res) => {
   res.send("🎉 Chào mừng đến với Backend API của Nền tảng Video Bài Giảng! Hãy gõ thêm /api/users trên thanh địa chỉ để xem dữ liệu nhé.");
 });
+// API KIỂM TRA DATABASE (Dành riêng cho Admin)
+app.get('/api/check-db', async (req, res) => {
+  try {
+    // 1. Lấy danh sách tất cả các bảng
+    const [tables] = await pool.query("SHOW TABLES");
+    
+    // 2. Soi cấu trúc của bảng users xem có cột password, role chưa
+    const [userColumns] = await pool.query("DESCRIBE users");
+
+    res.json({
+      message: "Trạng thái Database hiện tại",
+      total_tables: tables.length,
+      tables: tables,
+      users_structure: userColumns
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Lỗi soi Database", details: err.message });
+  }
+});
