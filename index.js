@@ -90,6 +90,40 @@ pool.getConnection()
     connection.release();
   })
   .catch((err) => console.error("❌ Lỗi kết nối MySQL:", err));
+
+// ==========================================
+// ĐỊNH NGHĨA CÁC ROUTE (API) TẠI ĐÂY
+// ==========================================
+
+// Lời chào khi truy cập link gốc
+app.get('/', (req, res) => {
+  res.send("🎉 Chào mừng đến với Backend API của Nền tảng Video Bài Giảng! Hãy gõ thêm /api/users trên thanh địa chỉ để xem dữ liệu nhé.");
+});
+
+// API KIỂM TRA DATABASE (Dành riêng cho Admin)
+app.get('/api/check-pool', async (req, res) => {
+  try {
+    // 1. Lấy danh sách tất cả các bảng
+    const [tables] = await pool.query("SHOW TABLES");
+    
+    // 2. Soi cấu trúc của bảng users xem có cột password, role chưa
+    const [userColumns] = await pool.query("DESCRIBE users");
+
+    res.json({
+      message: "Trạng thái Database hiện tại",
+      total_tables: tables.length,
+      tables: tables,
+      users_structure: userColumns
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Lỗi soi Database", details: err.message });
+  }
+});
+
+// ------------------------------------------
+// API USERS
+// ------------------------------------------
+
 // API Lấy TẤT CẢ
 app.get('/api/users', async (req, res) => {
   try {
@@ -112,7 +146,7 @@ app.get('/api/users/:id', async (req, res) => {
   }
 });
 
-// API Thêm
+// API Thêm User
 app.post('/api/users', async (req, res) => {
   try {
     const { name, email, phone } = req.body;
@@ -123,7 +157,7 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
-// API Sửa
+// API Sửa User
 app.put('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -135,7 +169,7 @@ app.put('/api/users/:id', async (req, res) => {
   }
 });
 
-// API Xóa
+// API Xóa User
 app.delete('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -146,6 +180,39 @@ app.delete('/api/users/:id', async (req, res) => {
   }
 });
 
+// ------------------------------------------
+// API COURSES
+// ------------------------------------------
+
+// GET /api/courses - Lấy danh sách khóa học
+app.get('/api/courses', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM courses');
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/courses - Thêm khóa học mới
+app.post('/api/courses', async (req, res) => {
+    // Đã thêm teacher_id mặc định là 1 để tránh lỗi database constraint
+    const { title, description, teacher_id = 1 } = req.body;
+    try {
+        const [result] = await pool.query(
+            'INSERT INTO courses (title, description, teacher_id) VALUES (?, ?, ?)',
+            [title, description, teacher_id]
+        );
+        res.status(201).json({ id: result.insertId, title, description, teacher_id });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ==========================================
+// CHẠY SERVER
+// ==========================================
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server Backend đang chạy tại http://localhost:${PORT}`);
@@ -153,26 +220,3 @@ app.listen(PORT, () => {
 
 // DÒNG NÀY ĐỂ VERCEL CHẠY ĐƯỢC API
 module.exports = app;
-// Lời chào khi truy cập link gốc
-app.get('/', (req, res) => {
-  res.send("🎉 Chào mừng đến với Backend API của Nền tảng Video Bài Giảng! Hãy gõ thêm /api/users trên thanh địa chỉ để xem dữ liệu nhé.");
-});
-// API KIỂM TRA DATABASE (Dành riêng cho Admin)
-app.get('/api/check-db', async (req, res) => {
-  try {
-    // 1. Lấy danh sách tất cả các bảng
-    const [tables] = await pool.query("SHOW TABLES");
-    
-    // 2. Soi cấu trúc của bảng users xem có cột password, role chưa
-    const [userColumns] = await pool.query("DESCRIBE users");
-
-    res.json({
-      message: "Trạng thái Database hiện tại",
-      total_tables: tables.length,
-      tables: tables,
-      users_structure: userColumns
-    });
-  } catch (err) {
-    res.status(500).json({ error: "Lỗi soi Database", details: err.message });
-  }
-});
