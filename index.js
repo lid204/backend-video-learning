@@ -114,17 +114,25 @@ app.get('/api/users/:id', async (req, res) => {
 
 // API Thêm
 // API Thêm (Đã thêm role)
+// API Thêm User & Đăng Ký (Đã nâng cấp để nhận Password)
 app.post('/api/users', async (req, res) => {
   try {
-    const { name, email, phone, role } = req.body;
-    const userRole = role || 'student'; // Mặc định nếu không chọn là student
+    // 1. Hứng thêm trường password từ Frontend gửi lên
+    const { name, email, phone, role, password } = req.body;
+    
+    const userRole = role || 'student';
+    const userPass = password || '123456'; // Nếu Admin thêm từ bảng thì mặc định pass là 123456
+
+    // 2. Lưu đầy đủ vào 5 cột
     const [result] = await pool.query(
-      "INSERT INTO users (name, email, phone, role) VALUES (?, ?, ?, ?)", 
-      [name, email, phone, userRole]
+      "INSERT INTO users (name, email, phone, role, password) VALUES (?, ?, ?, ?, ?)", 
+      [name, email, phone, userRole, userPass]
     );
+    
     res.json({ id: result.insertId, name, email, phone, role: userRole });
   } catch (err) {
-    res.status(500).json({ error: "Lỗi thêm user" });
+    console.error("Lỗi Backend:", err);
+    res.status(500).json({ error: "Lỗi thêm user", details: err.message });
   }
 });
 
