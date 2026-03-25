@@ -180,6 +180,35 @@ app.get('/api/fix-db', async (req, res) => {
     res.send("⚠️ Thông báo: " + err.message);
   }
 });
+// API CHỮA CHÁY: RESET BẢNG USERS VỀ CHUẨN MỚI NHẤT
+app.get('/api/reset-users', async (req, res) => {
+  try {
+    // Tạm tắt kiểm tra khóa ngoại để được phép xóa bảng
+    await pool.query("SET FOREIGN_KEY_CHECKS = 0");
+    await pool.query("DROP TABLE IF EXISTS users");
+    
+    // Tạo lại bảng users với đầy đủ vũ khí
+    await pool.query(`
+      CREATE TABLE users (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(100) NOT NULL,
+          email VARCHAR(100) UNIQUE NOT NULL,
+          password VARCHAR(255) NOT NULL,
+          phone VARCHAR(20),
+          role ENUM('student', 'teacher', 'admin') DEFAULT 'student',
+          avatar_url VARCHAR(255),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Bật lại kiểm tra khóa ngoại
+    await pool.query("SET FOREIGN_KEY_CHECKS = 1");
+    
+    res.send("✅ Đã đập đi xây lại bảng users chuẩn 100%! Các cột role và password đã sẵn sàng.");
+  } catch (err) {
+    res.send("⚠️ Lỗi: " + err.message);
+  }
+});
 // DÒNG NÀY ĐỂ VERCEL CHẠY ĐƯỢC API
 module.exports = app;
 // Lời chào khi truy cập link gốc
