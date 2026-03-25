@@ -113,23 +113,31 @@ app.get('/api/users/:id', async (req, res) => {
 });
 
 // API Thêm
+// API Thêm (Đã thêm role)
 app.post('/api/users', async (req, res) => {
   try {
-    const { name, email, phone } = req.body;
-    const [result] = await pool.query("INSERT INTO users (name, email, phone) VALUES (?, ?, ?)", [name, email, phone]);
-    res.json({ id: result.insertId, name, email, phone });
+    const { name, email, phone, role } = req.body;
+    const userRole = role || 'student'; // Mặc định nếu không chọn là student
+    const [result] = await pool.query(
+      "INSERT INTO users (name, email, phone, role) VALUES (?, ?, ?, ?)", 
+      [name, email, phone, userRole]
+    );
+    res.json({ id: result.insertId, name, email, phone, role: userRole });
   } catch (err) {
     res.status(500).json({ error: "Lỗi thêm user" });
   }
 });
 
-// API Sửa
+// API Sửa (Đã thêm role)
 app.put('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, phone } = req.body;
-    await pool.query("UPDATE users SET name = ?, email = ?, phone = ? WHERE id = ?", [name, email, phone, id]);
-    res.json({ id, name, email, phone });
+    const { name, email, phone, role } = req.body;
+    await pool.query(
+      "UPDATE users SET name = ?, email = ?, phone = ?, role = ? WHERE id = ?", 
+      [name, email, phone, role, id]
+    );
+    res.json({ id, name, email, phone, role });
   } catch (err) {
     res.status(500).json({ error: "Lỗi cập nhật" });
   }
