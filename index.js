@@ -167,6 +167,19 @@ app.listen(PORT, () => {
   console.log(`🚀 Server Backend đang chạy tại http://localhost:${PORT}`);
 });
 
+// API CHỮA CHÁY DATABASE (Vá lỗi thiếu cột)
+app.get('/api/fix-db', async (req, res) => {
+  try {
+    // Ép MySQL phải thêm 3 cột mới vào bảng users cũ
+    await pool.query("ALTER TABLE users ADD COLUMN password VARCHAR(255) NOT NULL DEFAULT '123456'");
+    await pool.query("ALTER TABLE users ADD COLUMN role ENUM('student', 'teacher', 'admin') DEFAULT 'student'");
+    await pool.query("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(255)");
+    
+    res.send("✅ =Các cột mới đã được thêm.");
+  } catch (err) {
+    res.send("⚠️ Thông báo: " + err.message);
+  }
+});
 // DÒNG NÀY ĐỂ VERCEL CHẠY ĐƯỢC API
 module.exports = app;
 // Lời chào khi truy cập link gốc
