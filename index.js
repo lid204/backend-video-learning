@@ -103,10 +103,7 @@ app.get('/', (req, res) => {
 // API KIỂM TRA DATABASE (Dành riêng cho Admin)
 app.get('/api/check-pool', async (req, res) => {
   try {
-    // 1. Lấy danh sách tất cả các bảng
     const [tables] = await pool.query("SHOW TABLES");
-    
-    // 2. Soi cấu trúc của bảng users xem có cột password, role chưa
     const [userColumns] = await pool.query("DESCRIBE users");
 
     res.json({
@@ -124,7 +121,6 @@ app.get('/api/check-pool', async (req, res) => {
 // API USERS
 // ------------------------------------------
 
-// API Lấy TẤT CẢ
 app.get('/api/users', async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT * FROM users ORDER BY id DESC");
@@ -134,7 +130,6 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
-// API Lấy 1 USER (Yêu cầu của thầy)
 app.get('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -146,7 +141,6 @@ app.get('/api/users/:id', async (req, res) => {
   }
 });
 
-// API Thêm User
 app.post('/api/users', async (req, res) => {
   try {
     const { name, email, phone } = req.body;
@@ -157,7 +151,6 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
-// API Sửa User
 app.put('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -169,7 +162,6 @@ app.put('/api/users/:id', async (req, res) => {
   }
 });
 
-// API Xóa User
 app.delete('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -184,7 +176,6 @@ app.delete('/api/users/:id', async (req, res) => {
 // API COURSES
 // ------------------------------------------
 
-// GET /api/courses - Lấy danh sách khóa học
 app.get('/api/courses', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM courses');
@@ -194,9 +185,7 @@ app.get('/api/courses', async (req, res) => {
     }
 });
 
-// POST /api/courses - Thêm khóa học mới
 app.post('/api/courses', async (req, res) => {
-    // Đã thêm teacher_id mặc định là 1 để tránh lỗi database constraint
     const { title, description, teacher_id = 1 } = req.body;
     try {
         const [result] = await pool.query(
@@ -207,6 +196,97 @@ app.post('/api/courses', async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
+});
+
+// ==========================================
+// ĐỒ CHƠI CÔNG NGHỆ: YOUTUBE REGEX (TASK 3)
+// ==========================================
+const extractYouTubeID = (url) => {
+  if (!url) return null;
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
+};
+
+// ------------------------------------------
+// API LESSONS (TASK 3)
+// ------------------------------------------
+
+// 1. GET: Lấy danh sách bài giảng của 1 khóa học cụ thể
+app.get('/api/courses/:courseId/lessons', async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const [rows] = await pool.query(
+      "SELECT * FROM lessons WHERE course_id = ? ORDER BY lesson_order ASC", 
+      [courseId]
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: "Lỗi lấy danh sách bài giảng", details: error.message });
+  }
+});
+
+// 2. POST: Thêm bài giảng mới (Tích hợp Regex bắt link YouTube)
+app.post('/api/lessons', async (req, res) => {
+  try {
+    const { course_id, title, video_url, duration, lesson_order } = req.body;
+    
+    // Bắt lỗi và cắt link YouTube
+    const videoId = extractYouTubeID(video_url);
+    if (!videoId) {
+      return res.status(400).json({ error: "Link YouTube không hợp lệ! Hãy dán link đúng định dạng." });
+    }
+
+    const [result] = await pool.query(
+      "INSERT INTO lessons (course_id, title, video_url, duration, lesson_order) VALUES (?, ?, ?, ?, ?)",
+      [course_id, title, videoId, duration || 0, lesson_order || 1]
+    );
+    
+    res.status(201).json({ 
+      message: "🎉 Thêm bài giảng thành công!", 
+      id: result.insertId, 
+      course_id, 
+      title, 
+      video_id_saved: videoId 
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Lỗi thêm bài giảng", details: error.message });
+  }
+});
+
+// 3. PUT: Cập nhật bài giảng
+app.put('/api/lessons/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, video_url, duration, lesson_order } = req.body;
+    
+    let finalVideoUrl = video_url;
+    if (video_url && (video_url.includes('youtu.be') || video_url.includes('youtube.com'))) {
+      const videoId = extractYouTubeID(video_url);
+      if (!videoId) return res.status(400).json({ error: "Link YouTube cập nhật không hợp lệ!" });
+      finalVideoUrl = videoId;
+    }
+
+    await pool.query(
+      "UPDATE lessons SET title = ?, video_url = ?, duration = ?, lesson_order = ? WHERE id = ?",
+      [title, finalVideoUrl, duration, lesson_order, id]
+    );
+    
+    res.json({ message: "✅ Cập nhật bài giảng thành công!", video_id_saved: finalVideoUrl });
+  } catch (error) {
+    res.status(500).json({ error: "Lỗi cập nhật bài giảng", details: error.message });
+  }
+});
+
+// 4. DELETE: Xóa bài giảng
+app.delete('/api/lessons/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query("DELETE FROM lessons WHERE id = ?", [id]);
+    res.json({ message: "🗑️ Đã xóa bài giảng thành công!" });
+  } catch (error) {
+    res.status(500).json({ error: "Lỗi xóa bài giảng", details: error.message });
+  }
 });
 
 // ==========================================
