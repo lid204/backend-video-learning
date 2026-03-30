@@ -205,7 +205,8 @@ const extractYouTubeID = (url) => {
   if (!url) return null;
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
   const match = url.match(regExp);
-  return (match && match[2].length === 11) ? match[2] : null;
+  // Cắt lấy ID 11 ký tự, nếu là link mp4 thường thì giữ nguyên link
+  return (match && match[2].length === 11) ? match[2] : url;
 };
 
 // ------------------------------------------
@@ -213,12 +214,12 @@ const extractYouTubeID = (url) => {
 // ------------------------------------------
 
 // 1. GET: Lấy danh sách bài giảng của 1 khóa học cụ thể
-app.get('/api/courses/:courseId/lessons', async (req, res) => {
+app.get('/api/lessons/course/:course_id', async (req, res) => {
   try {
-    const { courseId } = req.params;
+    const { course_id } = req.params;
     const [rows] = await pool.query(
       "SELECT * FROM lessons WHERE course_id = ? ORDER BY lesson_order ASC", 
-      [courseId]
+      [course_id]
     );
     res.json(rows);
   } catch (error) {
@@ -232,14 +233,11 @@ app.post('/api/lessons', async (req, res) => {
     const { course_id, title, video_url, duration, lesson_order } = req.body;
     
     // Bắt lỗi và cắt link YouTube
-    const videoId = extractYouTubeID(video_url);
-    if (!videoId) {
-      return res.status(400).json({ error: "Link YouTube không hợp lệ! Hãy dán link đúng định dạng." });
-    }
+    const processedUrl = extractYouTubeID(video_url);
 
     const [result] = await pool.query(
       "INSERT INTO lessons (course_id, title, video_url, duration, lesson_order) VALUES (?, ?, ?, ?, ?)",
-      [course_id, title, videoId, duration || 0, lesson_order || 1]
+      [course_id, title, processedUrl, duration || 0, lesson_order || 1]
     );
     
     res.status(201).json({ 
@@ -247,7 +245,7 @@ app.post('/api/lessons', async (req, res) => {
       id: result.insertId, 
       course_id, 
       title, 
-      video_id_saved: videoId 
+      video_url: processedUrl 
     });
   } catch (error) {
     res.status(500).json({ error: "Lỗi thêm bài giảng", details: error.message });
@@ -260,19 +258,14 @@ app.put('/api/lessons/:id', async (req, res) => {
     const { id } = req.params;
     const { title, video_url, duration, lesson_order } = req.body;
     
-    let finalVideoUrl = video_url;
-    if (video_url && (video_url.includes('youtu.be') || video_url.includes('youtube.com'))) {
-      const videoId = extractYouTubeID(video_url);
-      if (!videoId) return res.status(400).json({ error: "Link YouTube cập nhật không hợp lệ!" });
-      finalVideoUrl = videoId;
-    }
+    const processedUrl = extractYouTubeID(video_url);
 
     await pool.query(
       "UPDATE lessons SET title = ?, video_url = ?, duration = ?, lesson_order = ? WHERE id = ?",
-      [title, finalVideoUrl, duration, lesson_order, id]
+      [title, processedUrl, duration, lesson_order, id]
     );
     
-    res.json({ message: "✅ Cập nhật bài giảng thành công!", video_id_saved: finalVideoUrl });
+    res.json({ message: "✅ Cập nhật bài giảng thành công!", video_id_saved: processedUrl });
   } catch (error) {
     res.status(500).json({ error: "Lỗi cập nhật bài giảng", details: error.message });
   }
