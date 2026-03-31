@@ -5,7 +5,13 @@ const cors = require('cors');
 const mysql = require('mysql2/promise');
 
 const app = express();
-app.use(cors());
+
+app.use(cors({
+  origin: '*', 
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 
 // Kết nối với Aiven MySQL Online
@@ -200,7 +206,7 @@ app.post('/api/enrollments', async (req, res) => {
     res.status(201).json({ message: "🎉 Cảm ơn bạn đã ghi danh!", id: result.insertId });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: "Đăng ký rồi cu!" });
-    res.status(500).json({ error: "Lỗi hệ thống" });
+    res.status(500).json({ error: "Lỗi hệ thống", details: err.message });
   }
 });
 
