@@ -1,4 +1,5 @@
 require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
@@ -15,14 +16,13 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   ssl: { rejectUnauthorized: false },
-  multipleStatements: true // BẮT BUỘC CÓ: Cho phép chạy 1 cục SQL dài cùng lúc
+  multipleStatements: true 
 });
 
 pool.getConnection()
   .then(async (connection) => {
     console.log("✅ Đã kết nối MySQL! Đang khởi tạo bộ Database chuẩn...");
     
-    // Chạy cục SQL tạo 6 bảng (Bỏ qua nếu đã có)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS categories (
           id INT AUTO_INCREMENT PRIMARY KEY,
@@ -86,6 +86,11 @@ pool.getConnection()
           FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
       );
     `);
+    // TẠO DỮ LIỆU MẪU ĐỂ TEST
+    console.log("🛠️ Đang chuẩn bị dữ liệu mẫu ID 101...");
+    await connection.query("INSERT IGNORE INTO users (id, name, email, password, role) VALUES (1, 'Kiều Zĩ', 'kieu-zi@test.com', '123456', 'student')");
+    await connection.query("INSERT IGNORE INTO courses (id, title, description, teacher_id) VALUES (101, 'Lập trình ReactJS cho Gen Z', 'Khóa học cực cháy', 1)");
+    
     console.log("✅ Toàn bộ 6 bảng Database đã sẵn sàng trên mạng!");
     connection.release();
   })
@@ -95,12 +100,11 @@ pool.getConnection()
 // ĐỊNH NGHĨA CÁC ROUTE (API) TẠI ĐÂY
 // ==========================================
 
-// Lời chào khi truy cập link gốc
 app.get('/', (req, res) => {
   res.send("🎉 Chào mừng đến với Backend API của Nền tảng Video Bài Giảng! Hãy gõ thêm /api/users trên thanh địa chỉ để xem dữ liệu nhé.");
 });
 
-// API KIỂM TRA DATABASE (Dành riêng cho Admin)
+// API KIỂM TRA DATABASE
 app.get('/api/check-pool', async (req, res) => {
   try {
     const [tables] = await pool.query("SHOW TABLES");
@@ -118,7 +122,7 @@ app.get('/api/check-pool', async (req, res) => {
 });
 
 // ------------------------------------------
-// API USERS
+// 1. API USERS (CỦA TECH LEAD - ĐÃ ĐƯỢC PHỤC HỒI)
 // ------------------------------------------
 
 app.get('/api/users', async (req, res) => {
@@ -143,20 +147,28 @@ app.get('/api/users/:id', async (req, res) => {
 
 app.post('/api/users', async (req, res) => {
   try {
-    const { name, email, phone } = req.body;
-    const [result] = await pool.query("INSERT INTO users (name, email, phone) VALUES (?, ?, ?)", [name, email, phone]);
-    res.json({ id: result.insertId, name, email, phone });
+    const { name, email, phone, role, password } = req.body;
+    const userRole = role || 'student';
+    const userPass = password || '123456';
+    const [result] = await pool.query(
+      "INSERT INTO users (name, email, phone, role, password) VALUES (?, ?, ?, ?, ?)", 
+      [name, email, phone, userRole, userPass]
+    );
+    res.json({ id: result.insertId, name, email, phone, role: userRole });
   } catch (err) {
-    res.status(500).json({ error: "Lỗi thêm user" });
+    res.status(500).json({ error: "Lỗi thêm user", details: err.message });
   }
 });
 
 app.put('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, phone } = req.body;
-    await pool.query("UPDATE users SET name = ?, email = ?, phone = ? WHERE id = ?", [name, email, phone, id]);
-    res.json({ id, name, email, phone });
+    const { name, email, phone, role } = req.body;
+    await pool.query(
+      "UPDATE users SET name = ?, email = ?, phone = ?, role = ? WHERE id = ?", 
+      [name, email, phone, role, id]
+    );
+    res.json({ id, name, email, phone, role });
   } catch (err) {
     res.status(500).json({ error: "Lỗi cập nhật" });
   }
@@ -166,15 +178,44 @@ app.delete('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
     await pool.query("DELETE FROM users WHERE id = ?", [id]);
-    res.json({ message: "Xóa thành công" });
+    res.json({ message: "Đã xóa thành công!" });
   } catch (err) {
-    res.status(500).json({ error: "Lỗi xóa user" });
+    res.status(500).json({ error: "Lỗi khi xóa!" });
   }
 });
 
 // ------------------------------------------
-// API COURSES
+// 2. API ENROLLMENTS & COURSES (TASK 4 - KIEU-VI)
 // ------------------------------------------
+
+app.post('/api/enrollments', async (req, res) => {
+  try {
+    const { user_id, course_id } = req.body; 
+    
+    const [result] = await pool.query(
+      "INSERT INTO enrollments (user_id, course_id) VALUES (?, ?)", 
+      [user_id, course_id]
+    );
+    
+    res.status(201).json({ message: "🎉 Cảm ơn bạn đã ghi danh!", id: result.insertId });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: "Đăng ký rồi cu!" });
+    res.status(500).json({ error: "Lỗi hệ thống" });
+  }
+});
+
+app.get('/api/my-courses/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const [rows] = await pool.query(
+      "SELECT c.* FROM courses c JOIN enrollments e ON c.id = e.course_id WHERE e.user_id = ?", 
+      [user_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Lỗi lấy dữ liệu" });
+  }
+});
 
 app.get('/api/courses', async (req, res) => {
     try {
@@ -198,22 +239,17 @@ app.post('/api/courses', async (req, res) => {
     }
 });
 
-// ==========================================
-// ĐỒ CHƠI CÔNG NGHỆ: YOUTUBE REGEX (TASK 3)
-// ==========================================
+// ------------------------------------------
+// 3. API LESSONS & YOUTUBE REGEX (TASK 3 - PHOQDUOQ)
+// ------------------------------------------
+
 const extractYouTubeID = (url) => {
   if (!url) return null;
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
   const match = url.match(regExp);
-  // Cắt lấy ID 11 ký tự, nếu là link mp4 thường thì giữ nguyên link
   return (match && match[2].length === 11) ? match[2] : url;
 };
 
-// ------------------------------------------
-// API LESSONS (TASK 3)
-// ------------------------------------------
-
-// 1. GET: Lấy danh sách bài giảng của 1 khóa học cụ thể
 app.get('/api/lessons/course/:course_id', async (req, res) => {
   try {
     const { course_id } = req.params;
@@ -227,12 +263,9 @@ app.get('/api/lessons/course/:course_id', async (req, res) => {
   }
 });
 
-// 2. POST: Thêm bài giảng mới (Tích hợp Regex bắt link YouTube)
 app.post('/api/lessons', async (req, res) => {
   try {
     const { course_id, title, video_url, duration, lesson_order } = req.body;
-    
-    // Bắt lỗi và cắt link YouTube
     const processedUrl = extractYouTubeID(video_url);
 
     const [result] = await pool.query(
@@ -252,12 +285,10 @@ app.post('/api/lessons', async (req, res) => {
   }
 });
 
-// 3. PUT: Cập nhật bài giảng
 app.put('/api/lessons/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { title, video_url, duration, lesson_order } = req.body;
-    
     const processedUrl = extractYouTubeID(video_url);
 
     await pool.query(
@@ -271,7 +302,6 @@ app.put('/api/lessons/:id', async (req, res) => {
   }
 });
 
-// 4. DELETE: Xóa bài giảng
 app.delete('/api/lessons/:id', async (req, res) => {
   try {
     const { id } = req.params;
