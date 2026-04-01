@@ -323,3 +323,26 @@ app.listen(PORT, () => {
 
 // DÒNG NÀY ĐỂ VERCEL CHẠY ĐƯỢC API
 module.exports = app;
+
+
+// ================= API TASK 1: TRANG CHỦ & KHÁM PHÁ =================
+
+// 1. LẤY DANH SÁCH DANH MỤC KHÓA HỌC
+app.get('/api/categories', async (req, res) => {
+  try {
+    const [categories] = await pool.query("SELECT * FROM categories");
+    res.json(categories);
+  } catch (err) {
+    res.status(500).json({ error: "Lỗi lấy danh mục", details: err.message });
+  }
+});
+
+// 2. LẤY DANH SÁCH TOÀN BỘ KHÓA HỌC
+app.get('/api/courses', async (req, res) => {
+  try {
+    const [courses] = await pool.query("SELECT * FROM courses ORDER BY created_at DESC");
+    res.json(courses);
+  } catch (err) {
+    res.status(500).json({ error: "Lỗi lấy khóa học", details: err.message });
+  }
+});
