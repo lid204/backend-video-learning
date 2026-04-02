@@ -16,13 +16,13 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   ssl: { rejectUnauthorized: false },
-  multipleStatements: true 
+  multipleStatements: true
 });
 
 pool.getConnection()
   .then(async (connection) => {
     console.log("✅ Đã kết nối MySQL! Đang khởi tạo bộ Database chuẩn...");
-    
+
     await connection.query(`
       CREATE TABLE IF NOT EXISTS categories (
           id INT AUTO_INCREMENT PRIMARY KEY,
@@ -90,7 +90,7 @@ pool.getConnection()
     console.log("🛠️ Đang chuẩn bị dữ liệu mẫu ID 101...");
     await connection.query("INSERT IGNORE INTO users (id, name, email, password, role) VALUES (1, 'Kiều Zĩ', 'kieu-zi@test.com', '123456', 'student')");
     await connection.query("INSERT IGNORE INTO courses (id, title, description, teacher_id) VALUES (101, 'Lập trình ReactJS cho Gen Z', 'Khóa học cực cháy', 1)");
-    
+
     console.log("✅ Toàn bộ 6 bảng Database đã sẵn sàng trên mạng!");
     connection.release();
   })
@@ -139,7 +139,7 @@ app.get('/api/users/:id', async (req, res) => {
     const { id } = req.params;
     const [rows] = await pool.query("SELECT * FROM users WHERE id = ?", [id]);
     if (rows.length === 0) return res.status(404).json({ error: "Không tìm thấy user này" });
-    res.json(rows[0]); 
+    res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: "Lỗi lấy dữ liệu" });
   }
@@ -151,7 +151,7 @@ app.post('/api/users', async (req, res) => {
     const userRole = role || 'student';
     const userPass = password || '123456';
     const [result] = await pool.query(
-      "INSERT INTO users (name, email, phone, role, password) VALUES (?, ?, ?, ?, ?)", 
+      "INSERT INTO users (name, email, phone, role, password) VALUES (?, ?, ?, ?, ?)",
       [name, email, phone, userRole, userPass]
     );
     res.json({ id: result.insertId, name, email, phone, role: userRole });
@@ -165,7 +165,7 @@ app.put('/api/users/:id', async (req, res) => {
     const { id } = req.params;
     const { name, email, phone, role } = req.body;
     await pool.query(
-      "UPDATE users SET name = ?, email = ?, phone = ?, role = ? WHERE id = ?", 
+      "UPDATE users SET name = ?, email = ?, phone = ?, role = ? WHERE id = ?",
       [name, email, phone, role, id]
     );
     res.json({ id, name, email, phone, role });
@@ -190,13 +190,13 @@ app.delete('/api/users/:id', async (req, res) => {
 
 app.post('/api/enrollments', async (req, res) => {
   try {
-    const { user_id, course_id } = req.body; 
-    
+    const { user_id, course_id } = req.body;
+
     const [result] = await pool.query(
-      "INSERT INTO enrollments (user_id, course_id) VALUES (?, ?)", 
+      "INSERT INTO enrollments (user_id, course_id) VALUES (?, ?)",
       [user_id, course_id]
     );
-    
+
     res.status(201).json({ message: "🎉 Cảm ơn bạn đã ghi danh!", id: result.insertId });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: "Đăng ký rồi cu!" });
@@ -208,7 +208,7 @@ app.get('/api/my-courses/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
     const [rows] = await pool.query(
-      "SELECT c.* FROM courses c JOIN enrollments e ON c.id = e.course_id WHERE e.user_id = ?", 
+      "SELECT c.* FROM courses c JOIN enrollments e ON c.id = e.course_id WHERE e.user_id = ?",
       [user_id]
     );
     res.json(rows);
@@ -218,25 +218,25 @@ app.get('/api/my-courses/:user_id', async (req, res) => {
 });
 
 app.get('/api/courses', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT * FROM courses');
-        res.json(rows);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+  try {
+    const [rows] = await pool.query('SELECT * FROM courses');
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.post('/api/courses', async (req, res) => {
-    const { title, description, teacher_id = 1 } = req.body;
-    try {
-        const [result] = await pool.query(
-            'INSERT INTO courses (title, description, teacher_id) VALUES (?, ?, ?)',
-            [title, description, teacher_id]
-        );
-        res.status(201).json({ id: result.insertId, title, description, teacher_id });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+  const { title, description, teacher_id = 1 } = req.body;
+  try {
+    const [result] = await pool.query(
+      'INSERT INTO courses (title, description, teacher_id) VALUES (?, ?, ?)',
+      [title, description, teacher_id]
+    );
+    res.status(201).json({ id: result.insertId, title, description, teacher_id });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // ------------------------------------------
@@ -254,7 +254,7 @@ app.get('/api/lessons/course/:course_id', async (req, res) => {
   try {
     const { course_id } = req.params;
     const [rows] = await pool.query(
-      "SELECT * FROM lessons WHERE course_id = ? ORDER BY lesson_order ASC", 
+      "SELECT * FROM lessons WHERE course_id = ? ORDER BY lesson_order ASC",
       [course_id]
     );
     res.json(rows);
@@ -272,13 +272,13 @@ app.post('/api/lessons', async (req, res) => {
       "INSERT INTO lessons (course_id, title, video_url, duration, lesson_order) VALUES (?, ?, ?, ?, ?)",
       [course_id, title, processedUrl, duration || 0, lesson_order || 1]
     );
-    
-    res.status(201).json({ 
-      message: "🎉 Thêm bài giảng thành công!", 
-      id: result.insertId, 
-      course_id, 
-      title, 
-      video_url: processedUrl 
+
+    res.status(201).json({
+      message: "🎉 Thêm bài giảng thành công!",
+      id: result.insertId,
+      course_id,
+      title,
+      video_url: processedUrl
     });
   } catch (error) {
     res.status(500).json({ error: "Lỗi thêm bài giảng", details: error.message });
@@ -295,7 +295,7 @@ app.put('/api/lessons/:id', async (req, res) => {
       "UPDATE lessons SET title = ?, video_url = ?, duration = ?, lesson_order = ? WHERE id = ?",
       [title, processedUrl, duration, lesson_order, id]
     );
-    
+
     res.json({ message: "✅ Cập nhật bài giảng thành công!", video_id_saved: processedUrl });
   } catch (error) {
     res.status(500).json({ error: "Lỗi cập nhật bài giảng", details: error.message });
@@ -309,6 +309,78 @@ app.delete('/api/lessons/:id', async (req, res) => {
     res.json({ message: "🗑️ Đã xóa bài giảng thành công!" });
   } catch (error) {
     res.status(500).json({ error: "Lỗi xóa bài giảng", details: error.message });
+  }
+});
+
+// ------------------------------------------
+// 4. API REVIEWS (CHẤM SAO - TASK 5 - LEARNING ROOM)
+// ------------------------------------------
+
+// GET: Lấy tất cả reviews của một khóa học (kèm tên người đánh giá)
+app.get('/api/reviews/:course_id', async (req, res) => {
+  try {
+    const { course_id } = req.params;
+    const [rows] = await pool.query(
+      `SELECT r.id, r.rating, r.comment, r.created_at, 
+              u.name AS user_name, u.avatar_url
+       FROM reviews r
+       JOIN users u ON r.user_id = u.id
+       WHERE r.course_id = ?
+       ORDER BY r.created_at DESC`,
+      [course_id]
+    );
+
+    // Tính điểm trung bình
+    const [avgResult] = await pool.query(
+      'SELECT AVG(rating) AS avg_rating, COUNT(*) AS total_reviews FROM reviews WHERE course_id = ?',
+      [course_id]
+    );
+
+    res.json({
+      reviews: rows,
+      avg_rating: parseFloat(avgResult[0].avg_rating || 0).toFixed(1),
+      total_reviews: avgResult[0].total_reviews
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Lỗi lấy danh sách đánh giá', details: error.message });
+  }
+});
+
+// POST: Học viên gửi đánh giá mới hoặc cập nhật đánh giá cũ
+app.post('/api/reviews', async (req, res) => {
+  try {
+    const { user_id, course_id, rating, comment } = req.body;
+
+    if (!user_id || !course_id || !rating) {
+      return res.status(400).json({ error: 'Thiếu thông tin bắt buộc (user_id, course_id, rating)' });
+    }
+    if (rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Rating phải nằm trong khoảng 1-5 sao' });
+    }
+
+    // Kiểm tra xem user đã review chưa (nếu rồi thì UPDATE, chưa thì INSERT)
+    const [existing] = await pool.query(
+      'SELECT id FROM reviews WHERE user_id = ? AND course_id = ?',
+      [user_id, course_id]
+    );
+
+    if (existing.length > 0) {
+      // Đã review rồi → cập nhật
+      await pool.query(
+        'UPDATE reviews SET rating = ?, comment = ? WHERE user_id = ? AND course_id = ?',
+        [rating, comment || '', user_id, course_id]
+      );
+      res.json({ message: '✅ Đã cập nhật đánh giá của bạn!' });
+    } else {
+      // Chưa review → thêm mới
+      const [result] = await pool.query(
+        'INSERT INTO reviews (user_id, course_id, rating, comment) VALUES (?, ?, ?, ?)',
+        [user_id, course_id, rating, comment || '']
+      );
+      res.status(201).json({ message: '🎉 Cảm ơn bạn đã đánh giá!', id: result.insertId });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Lỗi gửi đánh giá', details: error.message });
   }
 });
 
