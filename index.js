@@ -231,7 +231,41 @@ app.get('/api/check-db', async (req, res) => {
     res.json({ message: "Trạng thái Database hiện tại", total_tables: tables.length, tables: tables, users_structure: userColumns });
   } catch (err) { res.status(500).json({ error: "Lỗi soi Database", details: err.message }); }
 });
+// ================= API QUẢN LÝ BÀI GIẢNG =================
 
+// 1. Lấy danh sách bài giảng theo ID Khóa học
+app.get('/api/lessons/course/:course_id', async (req, res) => {
+  try {
+    const { course_id } = req.params;
+    const [rows] = await pool.query("SELECT * FROM lessons WHERE course_id = ?", [course_id]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Lỗi lấy danh sách bài giảng" });
+  }
+});
+
+// 2. Thêm bài giảng mới (Tự động cắt link YouTube lấy ID)
+app.post('/api/lessons', async (req, res) => {
+  try {
+    const { course_id, title, video_url } = req.body;
+    
+    // Logic tự động cắt link YouTube dài thành mã ID ngắn gọn
+    let videoId = video_url;
+    if (video_url.includes('v=')) {
+        videoId = video_url.split('v=')[1].substring(0, 11);
+    } else if (video_url.includes('youtu.be/')) {
+        videoId = video_url.split('youtu.be/')[1].substring(0, 11);
+    }
+
+    const [result] = await pool.query(
+      "INSERT INTO lessons (course_id, title, video_url) VALUES (?, ?, ?)",
+      [course_id, title, videoId]
+    );
+    res.json({ message: "Thêm thành công", id: result.insertId, video_url: videoId });
+  } catch (err) {
+    res.status(500).json({ error: "Lỗi thêm bài giảng", details: err.message });
+  }
+});
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server Backend đang chạy tại cổng ${PORT}`);
