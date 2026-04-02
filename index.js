@@ -3,14 +3,11 @@ const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
 
-
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-
-//danh
-// --- CẤU HÌNH CLOUDINARY & MULTER ---
+// --- CẤU HÌNH CLOUDINARY & MULTER (TASK 2) ---
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
@@ -24,13 +21,13 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
-    folder: 'video_learning_courses', // Tên thư mục nó sẽ tự tạo trên Cloudinary
+    folder: 'video_learning_courses', // Tên thư mục trên Cloudinary
     allowedFormats: ['jpg', 'png', 'jpeg']
   }
 });
 const upload = multer({ storage: storage });
 
-// --- API NHẬN ẢNH VÀ TRẢ VỀ LINK ---
+// --- API NHẬN ẢNH VÀ TRẢ VỀ LINK CLOUDINARY ---
 app.post('/api/upload', upload.single('image'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'Không có file ảnh nào được tải lên!' });
@@ -38,7 +35,6 @@ app.post('/api/upload', upload.single('image'), (req, res) => {
   // Nếu upload thành công, trả về đường link ảnh của Cloudinary
   res.json({ imageUrl: req.file.path });
 });
-//danh
 
 // Kết nối với Aiven MySQL Online
 const pool = mysql.createPool({
@@ -48,14 +44,13 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   ssl: { rejectUnauthorized: false },
-  multipleStatements: true // BẮT BUỘC CÓ: Cho phép chạy 1 cục SQL dài cùng lúc
+  multipleStatements: true
 });
 
 pool.getConnection()
   .then(async (connection) => {
     console.log("✅ Đã kết nối MySQL! Đang khởi tạo bộ Database chuẩn...");
     
-    // Chạy cục SQL tạo 6 bảng (Bỏ qua nếu đã có)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS categories (
           id INT AUTO_INCREMENT PRIMARY KEY,
@@ -123,53 +118,37 @@ pool.getConnection()
     connection.release();
   })
   .catch((err) => console.error("❌ Lỗi kết nối MySQL:", err));
-// API Lấy TẤT CẢ
+
+// ================= API QUẢN LÝ USERS =================
 app.get('/api/users', async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT * FROM users ORDER BY id DESC");
     res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: "Lỗi lấy dữ liệu" });
-  }
+  } catch (err) { res.status(500).json({ error: "Lỗi lấy dữ liệu" }); }
 });
 
-// API Lấy 1 USER (Yêu cầu của thầy)
 app.get('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const [rows] = await pool.query("SELECT * FROM users WHERE id = ?", [id]);
     if (rows.length === 0) return res.status(404).json({ error: "Không tìm thấy user này" });
     res.json(rows[0]); 
-  } catch (err) {
-    res.status(500).json({ error: "Lỗi lấy dữ liệu" });
-  }
+  } catch (err) { res.status(500).json({ error: "Lỗi lấy dữ liệu" }); }
 });
 
-// API Thêm
-// API Thêm (Đã thêm role)
-// API Thêm User & Đăng Ký (Đã nâng cấp để nhận Password)
 app.post('/api/users', async (req, res) => {
   try {
-    // 1. Hứng thêm trường password từ Frontend gửi lên
     const { name, email, phone, role, password } = req.body;
-    
     const userRole = role || 'student';
-    const userPass = password || '123456'; // Nếu Admin thêm từ bảng thì mặc định pass là 123456
-
-    // 2. Lưu đầy đủ vào 5 cột
+    const userPass = password || '123456';
     const [result] = await pool.query(
       "INSERT INTO users (name, email, phone, role, password) VALUES (?, ?, ?, ?, ?)", 
       [name, email, phone, userRole, userPass]
     );
-    
     res.json({ id: result.insertId, name, email, phone, role: userRole });
-  } catch (err) {
-    console.error("Lỗi Backend:", err);
-    res.status(500).json({ error: "Lỗi thêm user", details: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: "Lỗi thêm user", details: err.message }); }
 });
 
-// API Sửa (Đã thêm role)
 app.put('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -179,55 +158,39 @@ app.put('/api/users/:id', async (req, res) => {
       [name, email, phone, role, id]
     );
     res.json({ id, name, email, phone, role });
-  } catch (err) {
-    res.status(500).json({ error: "Lỗi cập nhật" });
-  }
+  } catch (err) { res.status(500).json({ error: "Lỗi cập nhật" }); }
 });
 
-// API Xóa
 app.delete('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
     await pool.query("DELETE FROM users WHERE id = ?", [id]);
     res.json({ message: "Xóa thành công" });
-  } catch (err) {
-    res.status(500).json({ error: "Lỗi xóa user" });
-  }
+  } catch (err) { res.status(500).json({ error: "Lỗi xóa user" }); }
 });
 
 
-//danh
-// ================= API QUẢN LÝ KHÓA HỌC =================
+// ================= API QUẢN LÝ KHÓA HỌC (TASK 2) =================
 
-// 1. Lấy danh sách toàn bộ khóa học
 app.get('/api/courses', async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT * FROM courses ORDER BY id DESC");
     res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: "Lỗi lấy danh sách khóa học" });
-  }
+  } catch (err) { res.status(500).json({ error: "Lỗi lấy danh sách khóa học" }); }
 });
 
-// 2. Thêm khóa học mới
 app.post('/api/courses', async (req, res) => {
   try {
     const { title, description, thumbnail_url, teacher_id, category_id, price } = req.body;
-    
-    // Tạm thời fix cứng teacher_id là 1 (vì mình chưa làm phần đăng nhập chuẩn cho API)
     const t_id = teacher_id || 1; 
-
     const [result] = await pool.query(
       "INSERT INTO courses (title, description, thumbnail_url, teacher_id, category_id, price) VALUES (?, ?, ?, ?, ?, ?)",
       [title, description, thumbnail_url, t_id, category_id || null, price || 0]
     );
     res.json({ message: "Thêm khóa học thành công!", id: result.insertId });
-  } catch (err) {
-    res.status(500).json({ error: "Lỗi thêm khóa học", details: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: "Lỗi thêm khóa học", details: err.message }); }
 });
 
-// 3. Sửa thông tin khóa học
 app.put('/api/courses/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -237,100 +200,41 @@ app.put('/api/courses/:id', async (req, res) => {
       [title, description, thumbnail_url, price, id]
     );
     res.json({ message: "Cập nhật thành công!" });
-  } catch (err) {
-    res.status(500).json({ error: "Lỗi cập nhật khóa học" });
-  }
+  } catch (err) { res.status(500).json({ error: "Lỗi cập nhật khóa học" }); }
 });
 
-// 4. Xóa khóa học
 app.delete('/api/courses/:id', async (req, res) => {
   try {
     const { id } = req.params;
     await pool.query("DELETE FROM courses WHERE id = ?", [id]);
     res.json({ message: "Xóa khóa học thành công!" });
-  } catch (err) {
-    res.status(500).json({ error: "Lỗi xóa khóa học" });
-  }
+  } catch (err) { res.status(500).json({ error: "Lỗi xóa khóa học" }); }
 });
-//danh
 
+// ================= API TASK 1: TRANG CHỦ & KHÁM PHÁ =================
+app.get('/api/categories', async (req, res) => {
+  try {
+    const [categories] = await pool.query("SELECT * FROM categories");
+    res.json(categories);
+  } catch (err) { res.status(500).json({ error: "Lỗi lấy danh mục", details: err.message }); }
+});
 
+// ================= CÁC API PHỤ TRỢ =================
+app.get('/', (req, res) => {
+  res.send("🎉 Chào mừng đến với Backend API của Nền tảng Video Bài Giảng! Hệ thống đang hoạt động hoàn hảo.");
+});
 
-
-
-
-
-
+app.get('/api/check-db', async (req, res) => {
+  try {
+    const [tables] = await pool.query("SHOW TABLES");
+    const [userColumns] = await pool.query("DESCRIBE users");
+    res.json({ message: "Trạng thái Database hiện tại", total_tables: tables.length, tables: tables, users_structure: userColumns });
+  } catch (err) { res.status(500).json({ error: "Lỗi soi Database", details: err.message }); }
+});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server Backend đang chạy tại http://localhost:${PORT}`);
+  console.log(`🚀 Server Backend đang chạy tại cổng ${PORT}`);
 });
 
-// API CHỮA CHÁY DATABASE (Vá lỗi thiếu cột)
-app.get('/api/fix-db', async (req, res) => {
-  try {
-    // Ép MySQL phải thêm 3 cột mới vào bảng users cũ
-    await pool.query("ALTER TABLE users ADD COLUMN password VARCHAR(255) NOT NULL DEFAULT '123456'");
-    await pool.query("ALTER TABLE users ADD COLUMN role ENUM('student', 'teacher', 'admin') DEFAULT 'student'");
-    await pool.query("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(255)");
-    
-    res.send("✅ =Các cột mới đã được thêm.");
-  } catch (err) {
-    res.send("⚠️ Thông báo: " + err.message);
-  }
-});
-// API CHỮA CHÁY: RESET BẢNG USERS VỀ CHUẨN MỚI NHẤT
-app.get('/api/reset-users', async (req, res) => {
-  try {
-    // Tạm tắt kiểm tra khóa ngoại để được phép xóa bảng
-    await pool.query("SET FOREIGN_KEY_CHECKS = 0");
-    await pool.query("DROP TABLE IF EXISTS users");
-    
-    // Tạo lại bảng users với đầy đủ vũ khí
-    await pool.query(`
-      CREATE TABLE users (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          name VARCHAR(100) NOT NULL,
-          email VARCHAR(100) UNIQUE NOT NULL,
-          password VARCHAR(255) NOT NULL,
-          phone VARCHAR(20),
-          role ENUM('student', 'teacher', 'admin') DEFAULT 'student',
-          avatar_url VARCHAR(255),
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    
-    // Bật lại kiểm tra khóa ngoại
-    await pool.query("SET FOREIGN_KEY_CHECKS = 1");
-    
-    res.send("✅ Đã đập đi xây lại bảng users chuẩn 100%! Các cột role và password đã sẵn sàng.");
-  } catch (err) {
-    res.send("⚠️ Lỗi: " + err.message);
-  }
-});
-// DÒNG NÀY ĐỂ VERCEL CHẠY ĐƯỢC API
 module.exports = app;
-// Lời chào khi truy cập link gốc
-app.get('/', (req, res) => {
-  res.send("🎉 Chào mừng đến với Backend API của Nền tảng Video Bài Giảng! Hãy gõ thêm /api/users trên thanh địa chỉ để xem dữ liệu nhé.");
-});
-// API KIỂM TRA DATABASE (Dành riêng cho Admin)
-app.get('/api/check-db', async (req, res) => {
-  try {
-    // 1. Lấy danh sách tất cả các bảng
-    const [tables] = await pool.query("SHOW TABLES");
-    
-    // 2. Soi cấu trúc của bảng users xem có cột password, role chưa
-    const [userColumns] = await pool.query("DESCRIBE users");
-
-    res.json({
-      message: "Trạng thái Database hiện tại",
-      total_tables: tables.length,
-      tables: tables,
-      users_structure: userColumns
-    });
-  } catch (err) {
-    res.status(500).json({ error: "Lỗi soi Database", details: err.message });
-  }
-});
