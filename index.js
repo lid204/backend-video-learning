@@ -54,12 +54,98 @@ pool.getConnection().then(async (connection) => {
     connection.release();
 }).catch(err => console.error("❌ DB Error:", err));
 
+
+// ================= API QUẢN LÝ USER (TỪ NHÁNH DANH) =================
+
 app.get('/api/users', async (req, res) => {
-  const [rows] = await pool.query("SELECT * FROM users");
-  res.json(rows);
+  try {
+    const [rows] = await pool.query("SELECT * FROM users ORDER BY id DESC");
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: "Lỗi lấy dữ liệu" }); }
 });
 
-// --- API LƯU KHÓA HỌC (ĐÃ FIX: LƯU ĐƯỢC MÔ TẢ VÀ TEACHER_ID) ---
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows] = await pool.query("SELECT * FROM users WHERE id = ?", [id]);
+    if (rows.length === 0) return res.status(404).json({ error: "Không tìm thấy user này" });
+    res.json(rows[0]); 
+  } catch (err) { res.status(500).json({ error: "Lỗi lấy dữ liệu" }); }
+});
+
+app.post('/api/users', async (req, res) => {
+  try {
+    const { name, email, phone, role, password } = req.body;
+    const userRole = role || 'student';
+    const userPass = password || '123456';
+    const [result] = await pool.query(
+      "INSERT INTO users (name, email, phone, role, password) VALUES (?, ?, ?, ?, ?)",
+      [name, email, phone, userRole, userPass]
+    );
+    res.json({ id: result.insertId, name, email, phone, role: userRole });
+  } catch (err) { res.status(500).json({ error: "Lỗi thêm user", details: err.message }); }
+});
+
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, phone, role } = req.body;
+    await pool.query(
+      "UPDATE users SET name = ?, email = ?, phone = ?, role = ? WHERE id = ?",
+      [name, email, phone, role, id]
+    );
+    res.json({ id, name, email, phone, role });
+  } catch (err) { res.status(500).json({ error: "Lỗi cập nhật" }); }
+});
+
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query("DELETE FROM users WHERE id = ?", [id]);
+    res.json({ message: "Xóa thành công" });
+  } catch (err) { res.status(500).json({ error: "Lỗi xóa user" }); }
+});
+
+
+// ================= API QUẢN LÝ KHÓA HỌC =================
+
+// 1. Lấy danh sách toàn bộ khóa học (Đã JOIN thêm tên Danh mục - Nâng cấp của Danh)
+app.get('/api/courses', async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT c.*, cat.name AS category_name 
+      FROM courses c 
+      LEFT JOIN categories cat ON c.category_id = cat.id 
+      ORDER BY c.id DESC
+    `);
+    res.json(rows);
+  } catch (err) { 
+    res.status(500).json({ error: "Lỗi lấy danh sách khóa học", details: err.message }); 
+  }
+});
+
+// 2. Lấy chi tiết 1 khóa học (Phục vụ trang CourseDetail - Của Danh)
+app.get('/api/courses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows] = await pool.query(`
+      SELECT c.*, cat.name AS category_name, u.name AS teacher_name
+      FROM courses c 
+      LEFT JOIN categories cat ON c.category_id = cat.id 
+      LEFT JOIN users u ON c.teacher_id = u.id
+      WHERE c.id = ?
+    `, [id]);
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Không tìm thấy khóa học này" });
+    }
+    res.json(rows[0]);
+  } catch (err) { 
+    res.status(500).json({ error: "Lỗi lấy chi tiết khóa học", details: err.message }); 
+  }
+});
+
+// 3. LƯU KHÓA HỌC (Từ nhánh Main)
 app.post('/api/courses', async (req, res) => {
   try {
     const { title, description, price, thumbnail_url } = req.body;
@@ -74,7 +160,7 @@ app.post('/api/courses', async (req, res) => {
   }
 });
 
-// --- API XÓA KHÓA HỌC ---
+// 4. XÓA KHÓA HỌC (Từ nhánh Main)
 app.delete('/api/courses/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -84,6 +170,9 @@ app.delete('/api/courses/:id', async (req, res) => {
     res.status(500).json({ error: "Lỗi xóa khóa học" });
   }
 });
+
+
+// ================= API QUẢN LÝ BÀI GIẢNG (CURRICULUM) =================
 
 app.get('/api/courses/:course_id/curriculum', async (req, res) => {
   try {
@@ -113,18 +202,13 @@ app.post('/api/lessons', async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Lỗi thêm bài" }); }
 });
 
-// ================= API LẤY DANH SÁCH KHÓA HỌC (TỪ NHÁNH CỦA VỸ) =================
-app.get('/api/courses', async (req, res) => {
-  const [rows] = await pool.query("SELECT * FROM courses ORDER BY id DESC");
-  res.json(rows);
-});
 
 // ================= API THỐNG KÊ ADMIN DASHBOARD (TỪ NHÁNH CỦA PHONG) =================
 
-// 1. Thống kê doanh thu theo tháng/ngày (dựa trên enrollments + courses.price)
+// 1. Thống kê doanh thu theo tháng/ngày
 app.get('/api/stats/revenue', async (req, res) => {
   try {
-    const { period } = req.query; // 'daily' hoặc 'monthly' (mặc định monthly)
+    const { period } = req.query; 
     let query;
     if (period === 'daily') {
       query = `
@@ -182,7 +266,7 @@ app.get('/api/stats/top-courses', async (req, res) => {
   }
 });
 
-// 3. Tỉ lệ hoàn thành bài học trung bình (dựa trên enrollments.progress_percent)
+// 3. Tỉ lệ hoàn thành bài học trung bình
 app.get('/api/stats/completion-rate', async (req, res) => {
   try {
     const [overall] = await pool.query(`
