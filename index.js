@@ -113,10 +113,144 @@ app.post('/api/lessons', async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Lỗi thêm bài" }); }
 });
 
+// ================= API LẤY DANH SÁCH KHÓA HỌC (TỪ NHÁNH CỦA VỸ) =================
 app.get('/api/courses', async (req, res) => {
   const [rows] = await pool.query("SELECT * FROM courses ORDER BY id DESC");
   res.json(rows);
 });
 
-const PORT = 5000;
-app.listen(PORT, () => console.log(`🚀 Server on ${PORT}`));
+// ================= API THỐNG KÊ ADMIN DASHBOARD (TỪ NHÁNH CỦA PHONG) =================
+
+// 1. Thống kê doanh thu theo tháng/ngày (dựa trên enrollments + courses.price)
+app.get('/api/stats/revenue', async (req, res) => {
+  try {
+    const { period } = req.query; // 'daily' hoặc 'monthly' (mặc định monthly)
+    let query;
+    if (period === 'daily') {
+      query = `
+        SELECT 
+          DATE(e.enrolled_at) AS label,
+          SUM(c.price) AS revenue,
+          COUNT(e.id) AS orders
+        FROM enrollments e
+        JOIN courses c ON e.course_id = c.id
+        WHERE e.enrolled_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+        GROUP BY DATE(e.enrolled_at)
+        ORDER BY label ASC
+      `;
+    } else {
+      query = `
+        SELECT 
+          DATE_FORMAT(e.enrolled_at, '%Y-%m') AS label,
+          SUM(c.price) AS revenue,
+          COUNT(e.id) AS orders
+        FROM enrollments e
+        JOIN courses c ON e.course_id = c.id
+        GROUP BY DATE_FORMAT(e.enrolled_at, '%Y-%m')
+        ORDER BY label ASC
+        LIMIT 12
+      `;
+    }
+    const [rows] = await pool.query(query);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi thống kê doanh thu', details: err.message });
+  }
+});
+
+// 2. Top 5 khóa học có nhiều học viên nhất
+app.get('/api/stats/top-courses', async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT 
+        c.id,
+        c.title,
+        c.thumbnail_url,
+        c.price,
+        COUNT(e.id) AS student_count,
+        COALESCE(AVG(r.rating), 0) AS avg_rating
+      FROM courses c
+      LEFT JOIN enrollments e ON c.id = e.course_id
+      LEFT JOIN reviews r ON c.id = r.course_id
+      GROUP BY c.id, c.title, c.thumbnail_url, c.price
+      ORDER BY student_count DESC
+      LIMIT 5
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi lấy top khóa học', details: err.message });
+  }
+});
+
+// 3. Tỉ lệ hoàn thành bài học trung bình (dựa trên enrollments.progress_percent)
+app.get('/api/stats/completion-rate', async (req, res) => {
+  try {
+    const [overall] = await pool.query(`
+      SELECT 
+        COALESCE(AVG(progress_percent), 0) AS avg_completion,
+        COUNT(CASE WHEN progress_percent = 100 THEN 1 END) AS completed_count,
+        COUNT(CASE WHEN progress_percent > 0 AND progress_percent < 100 THEN 1 END) AS in_progress_count,
+        COUNT(CASE WHEN progress_percent = 0 THEN 1 END) AS not_started_count,
+        COUNT(*) AS total_enrollments
+      FROM enrollments
+    `);
+    const [byCourse] = await pool.query(`
+      SELECT 
+        c.title AS course_title,
+        COALESCE(AVG(e.progress_percent), 0) AS avg_completion,
+        COUNT(e.id) AS total_students
+      FROM enrollments e
+      JOIN courses c ON e.course_id = c.id
+      GROUP BY c.id, c.title
+      ORDER BY avg_completion DESC
+      LIMIT 5
+    `);
+    res.json({
+      overall: overall[0],
+      by_course: byCourse
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi thống kê hoàn thành', details: err.message });
+  }
+});
+
+// 4. Tổng số user mới đăng ký trong tháng + tổng quan hệ thống
+app.get('/api/stats/overview', async (req, res) => {
+  try {
+    const [newUsers] = await pool.query(`
+      SELECT COUNT(*) AS new_users_this_month
+      FROM users
+      WHERE MONTH(created_at) = MONTH(NOW()) AND YEAR(created_at) = YEAR(NOW())
+    `);
+    const [totalUsers] = await pool.query(`SELECT COUNT(*) AS total FROM users`);
+    const [totalCourses] = await pool.query(`SELECT COUNT(*) AS total FROM courses`);
+    const [totalEnrollments] = await pool.query(`SELECT COUNT(*) AS total FROM enrollments`);
+    const [totalRevenue] = await pool.query(`
+      SELECT COALESCE(SUM(c.price), 0) AS total_revenue
+      FROM enrollments e
+      JOIN courses c ON e.course_id = c.id
+    `);
+    const [revenueThisMonth] = await pool.query(`
+      SELECT COALESCE(SUM(c.price), 0) AS revenue_this_month
+      FROM enrollments e
+      JOIN courses c ON e.course_id = c.id
+      WHERE MONTH(e.enrolled_at) = MONTH(NOW()) AND YEAR(e.enrolled_at) = YEAR(NOW())
+    `);
+    res.json({
+      new_users_this_month: newUsers[0].new_users_this_month,
+      total_users: totalUsers[0].total,
+      total_courses: totalCourses[0].total,
+      total_enrollments: totalEnrollments[0].total,
+      total_revenue: totalRevenue[0].total_revenue,
+      revenue_this_month: revenueThisMonth[0].revenue_this_month
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi thống kê tổng quan', details: err.message });
+  }
+});
+
+// ================= CHẠY SERVER =================
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server Backend đang chạy tại cổng ${PORT}`);
+});
