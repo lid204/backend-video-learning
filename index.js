@@ -185,44 +185,43 @@ app.delete('/api/users/:id', async (req, res) => {
 
 // ================= API QUẢN LÝ KHÓA HỌC =================
 
+// 1. Lấy danh sách toàn bộ khóa học (Đã JOIN thêm tên Danh mục)
 app.get('/api/courses', async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT * FROM courses ORDER BY id DESC");
+    const [rows] = await pool.query(`
+      SELECT c.*, cat.name AS category_name 
+      FROM courses c 
+      LEFT JOIN categories cat ON c.category_id = cat.id 
+      ORDER BY c.id DESC
+    `);
     res.json(rows);
-  } catch (err) { res.status(500).json({ error: "Lỗi lấy danh sách khóa học" }); }
+  } catch (err) { 
+    res.status(500).json({ error: "Lỗi lấy danh sách khóa học", details: err.message }); 
+  }
 });
 
-app.post('/api/courses', async (req, res) => {
-  try {
-    const { title, description, thumbnail_url, teacher_id, category_id, price } = req.body;
-    const t_id = teacher_id || 1; 
-    const [result] = await pool.query(
-      "INSERT INTO courses (title, description, thumbnail_url, teacher_id, category_id, price) VALUES (?, ?, ?, ?, ?, ?)",
-      [title, description, thumbnail_url, t_id, category_id || null, price || 0]
-    );
-    res.json({ message: "Thêm khóa học thành công!", id: result.insertId });
-  } catch (err) { res.status(500).json({ error: "Lỗi thêm khóa học", details: err.message }); }
-});
-
-app.put('/api/courses/:id', async (req, res) => {
+// 2. Lấy chi tiết 1 khóa học (Phục vụ trang CourseDetail)
+app.get('/api/courses/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, thumbnail_url, price } = req.body;
-    await pool.query(
-      "UPDATE courses SET title = ?, description = ?, thumbnail_url = ?, price = ? WHERE id = ?",
-      [title, description, thumbnail_url, price, id]
-    );
-    res.json({ message: "Cập nhật thành công!" });
-  } catch (err) { res.status(500).json({ error: "Lỗi cập nhật khóa học" }); }
+    const [rows] = await pool.query(`
+      SELECT c.*, cat.name AS category_name, u.name AS teacher_name
+      FROM courses c 
+      LEFT JOIN categories cat ON c.category_id = cat.id 
+      LEFT JOIN users u ON c.teacher_id = u.id
+      WHERE c.id = ?
+    `, [id]);
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Không tìm thấy khóa học này" });
+    }
+    res.json(rows[0]);
+  } catch (err) { 
+    res.status(500).json({ error: "Lỗi lấy chi tiết khóa học", details: err.message }); 
+  }
 });
 
-app.delete('/api/courses/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    await pool.query("DELETE FROM courses WHERE id = ?", [id]);
-    res.json({ message: "Xóa khóa học thành công!" });
-  } catch (err) { res.status(500).json({ error: "Lỗi xóa khóa học" }); }
-});
+// ... (Giữ nguyên các API POST, PUT, DELETE ở bên dưới của bạn) ...
 
 // ================= API DANH MỤC & ENROLLMENT (TÁCH TỪ CODE LỖI) =================
 
