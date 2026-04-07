@@ -2,15 +2,17 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-// --- CẤU HÌNH CLOUDINARY & MULTER ---
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
+
+const app = express();
+app.use(cors({
+  origin: "https://frontend-video-learning-lid204s-projects.vercel.app",
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
+app.use(express.json());
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -20,30 +22,17 @@ cloudinary.config({
 
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
-  params: {
-    folder: 'video_learning_courses', 
-    allowedFormats: ['jpg', 'png', 'jpeg']
-  }
+  params: { folder: 'video_learning_courses', allowedFormats: ['jpg', 'png', 'jpeg'] }
 });
 const upload = multer({ storage: storage });
 
-// --- HÀM HỖ TRỢ XỬ LÝ LINK YOUTUBE ---
-const extractYouTubeID = (url) => {
-    if (!url) return '';
-    if (url.includes('v=')) return url.split('v=')[1].substring(0, 11);
-    if (url.includes('youtu.be/')) return url.split('youtu.be/')[1].substring(0, 11);
-    return url;
-};
+const extractYouTubeID = (url) => { return url; };
 
-// --- API NHẬN ẢNH VÀ TRẢ VỀ LINK CLOUDINARY ---
 app.post('/api/upload', upload.single('image'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'Không có file ảnh nào được tải lên!' });
-  }
+  if (!req.file) return res.status(400).json({ error: 'Chưa chọn ảnh ní ơi!' });
   res.json({ imageUrl: req.file.path });
 });
 
-// Kết nối với Aiven MySQL Online
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   port: process.env.DB_PORT,
@@ -54,85 +43,20 @@ const pool = mysql.createPool({
   multipleStatements: true
 });
 
-pool.getConnection()
-  .then(async (connection) => {
-    console.log("✅ Đã kết nối MySQL! Đang khởi tạo bộ Database chuẩn...");
-
+pool.getConnection().then(async (connection) => {
+    console.log("✅ MySQL Ready!");
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS categories (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          name VARCHAR(100) NOT NULL,
-          description TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS users (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          name VARCHAR(100) NOT NULL,
-          email VARCHAR(100) UNIQUE NOT NULL,
-          password VARCHAR(255) NOT NULL DEFAULT '123456',
-          phone VARCHAR(20),
-          role ENUM('student', 'teacher', 'admin') DEFAULT 'student',
-          avatar_url VARCHAR(255),
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS courses (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          title VARCHAR(255) NOT NULL,
-          description TEXT,
-          thumbnail_url VARCHAR(255),
-          teacher_id INT NOT NULL,
-          category_id INT,
-          price DECIMAL(10,2) DEFAULT 0.00,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE,
-          FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS lessons (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          course_id INT NOT NULL,
-          title VARCHAR(255) NOT NULL,
-          video_url VARCHAR(255) NOT NULL,
-          duration INT,
-          lesson_order INT DEFAULT 1,
-          FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS enrollments (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          user_id INT NOT NULL,
-          course_id INT NOT NULL,
-          progress_percent INT DEFAULT 0,
-          enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-          FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
-          UNIQUE(user_id, course_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS reviews (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          user_id INT NOT NULL,
-          course_id INT NOT NULL,
-          rating INT CHECK (rating >= 1 AND rating <= 5),
-          comment TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-          FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
-      );
+      CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100), email VARCHAR(100) UNIQUE, password VARCHAR(255) DEFAULT '123456', role ENUM('student', 'teacher', 'admin') DEFAULT 'student');
+      CREATE TABLE IF NOT EXISTS courses (id INT AUTO_INCREMENT PRIMARY KEY, title VARCHAR(255), thumbnail_url VARCHAR(255), price DECIMAL(10,2) DEFAULT 0.00, description TEXT);
+      CREATE TABLE IF NOT EXISTS sections (id INT AUTO_INCREMENT PRIMARY KEY, course_id INT, title VARCHAR(255), order_index INT DEFAULT 0, FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE);
+      CREATE TABLE IF NOT EXISTS lessons (id INT AUTO_INCREMENT PRIMARY KEY, section_id INT, title VARCHAR(255), video_url VARCHAR(255), duration INT DEFAULT 0, order_index INT DEFAULT 1, FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE);
     `);
-
-    // TẠO DỮ LIỆU MẪU ĐỂ TEST (Từ nhánh ten-branch)
-    console.log("🛠️ Đang chuẩn bị dữ liệu mẫu...");
-    await connection.query("INSERT IGNORE INTO users (id, name, email, password, role) VALUES (1, 'Kiều Zĩ', 'kieu-zi@test.com', '123456', 'student')");
-    await connection.query("INSERT IGNORE INTO courses (id, title, description, teacher_id) VALUES (101, 'Lập trình ReactJS cho Gen Z', 'Khóa học cực cháy', 1)");
-
-    console.log("✅ Toàn bộ 6 bảng Database đã sẵn sàng trên mạng!");
     connection.release();
-  })
-  .catch((err) => console.error("❌ Lỗi kết nối MySQL:", err));
+}).catch(err => console.error("❌ DB Error:", err));
 
-// ================= API QUẢN LÝ USERS =================
+
+// ================= API QUẢN LÝ USER (TỪ NHÁNH DANH) =================
+
 app.get('/api/users', async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT * FROM users ORDER BY id DESC");
@@ -185,7 +109,7 @@ app.delete('/api/users/:id', async (req, res) => {
 
 // ================= API QUẢN LÝ KHÓA HỌC =================
 
-// 1. Lấy danh sách toàn bộ khóa học (Đã JOIN thêm tên Danh mục)
+// 1. Lấy danh sách toàn bộ khóa học (Đã JOIN thêm tên Danh mục - Nâng cấp của Danh)
 app.get('/api/courses', async (req, res) => {
   try {
     const [rows] = await pool.query(`
@@ -200,7 +124,7 @@ app.get('/api/courses', async (req, res) => {
   }
 });
 
-// 2. Lấy chi tiết 1 khóa học (Phục vụ trang CourseDetail)
+// 2. Lấy chi tiết 1 khóa học (Phục vụ trang CourseDetail - Của Danh)
 app.get('/api/courses/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -221,189 +145,191 @@ app.get('/api/courses/:id', async (req, res) => {
   }
 });
 
-// ... (Giữ nguyên các API POST, PUT, DELETE ở bên dưới của bạn) ...
-
-// ================= API DANH MỤC & ENROLLMENT (TÁCH TỪ CODE LỖI) =================
-
-app.get('/api/categories', async (req, res) => {
+// 3. LƯU KHÓA HỌC (Từ nhánh Main)
+app.post('/api/courses', async (req, res) => {
   try {
-    const [categories] = await pool.query("SELECT * FROM categories");
-    res.json(categories);
-  } catch (err) { res.status(500).json({ error: "Lỗi lấy danh mục", details: err.message }); }
-});
-
-// Chức năng Đăng ký học (Enrollment)
-app.post('/api/enrollments', async (req, res) => {
-  try {
-    const { user_id, course_id } = req.body;
+    const { title, description, price, thumbnail_url } = req.body;
     const [result] = await pool.query(
-      "INSERT INTO enrollments (user_id, course_id) VALUES (?, ?)",
-      [user_id, course_id]
+      "INSERT INTO courses (title, description, price, thumbnail_url, teacher_id) VALUES (?, ?, ?, ?, ?)",
+      [title, description || '', price || 0, thumbnail_url || '', 1] 
     );
-    res.status(201).json({ message: "🎉 Cảm ơn bạn đã ghi danh!", id: result.insertId });
-  } catch (err) {
-    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: "Đã đăng ký khóa này rồi!" });
-    res.status(500).json({ error: "Lỗi hệ thống" });
+    res.status(201).json({ message: "OK", id: result.insertId });
+  } catch (err) { 
+    console.error(err);
+    res.status(500).json({ error: "Lỗi lưu khóa học" }); 
   }
 });
 
-// Lấy danh sách khóa học của 1 User
-app.get('/api/my-courses/:user_id', async (req, res) => {
+// 4. XÓA KHÓA HỌC (Từ nhánh Main)
+app.delete('/api/courses/:id', async (req, res) => {
   try {
-    const { user_id } = req.params;
-    const [rows] = await pool.query(
-      "SELECT c.* FROM courses c JOIN enrollments e ON c.id = e.course_id WHERE e.user_id = ?",
-      [user_id]
-    );
-    res.json(rows);
-  } catch (err) { res.status(500).json({ error: "Lỗi lấy khóa học của tôi" }); }
+    const { id } = req.params;
+    await pool.query("DELETE FROM courses WHERE id = ?", [id]);
+    res.json({ message: "Xóa thành công" });
+  } catch (err) {
+    res.status(500).json({ error: "Lỗi xóa khóa học" });
+  }
 });
 
 
-// ================= CÁC API PHỤ TRỢ =================
-app.get('/', (req, res) => {
-  res.send("🎉 Chào mừng đến với Backend API của Nền tảng Video Bài Giảng! Hệ thống đang hoạt động hoàn hảo.");
-});
+// ================= API QUẢN LÝ BÀI GIẢNG (CURRICULUM) =================
 
-app.get('/api/check-db', async (req, res) => {
-  try {
-    const [tables] = await pool.query("SHOW TABLES");
-    const [userColumns] = await pool.query("DESCRIBE users");
-    res.json({ message: "Trạng thái Database hiện tại", total_tables: tables.length, tables: tables, users_structure: userColumns });
-  } catch (err) { res.status(500).json({ error: "Lỗi soi Database", details: err.message }); }
-});
-
-// ================= API QUẢN LÝ BÀI GIẢNG =================
-
-// 1. Lấy danh sách bài giảng theo ID Khóa học
-app.get('/api/lessons/course/:course_id', async (req, res) => {
+app.get('/api/courses/:course_id/curriculum', async (req, res) => {
   try {
     const { course_id } = req.params;
-    const [rows] = await pool.query(
-      "SELECT * FROM lessons WHERE course_id = ? ORDER BY lesson_order ASC",
-      [course_id]
-    );
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: "Lỗi lấy danh sách bài giảng" });
-  }
+    const [sections] = await pool.query("SELECT * FROM sections WHERE course_id = ? ORDER BY order_index ASC", [course_id]);
+    const curriculum = await Promise.all(sections.map(async (sec) => {
+      const [lessons] = await pool.query("SELECT * FROM lessons WHERE section_id = ? ORDER BY order_index ASC", [sec.id]);
+      return { ...sec, lessons };
+    }));
+    res.json(curriculum);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// 2. Thêm bài giảng mới (Tự động cắt link YouTube lấy ID)
+app.post('/api/sections', async (req, res) => {
+  try {
+    const { course_id, title, order_index } = req.body;
+    const [result] = await pool.query("INSERT INTO sections (course_id, title, order_index) VALUES (?, ?, ?)", [course_id, title, order_index || 0]);
+    res.status(201).json({ message: "OK", id: result.insertId });
+  } catch (err) { res.status(500).json({ error: "Lỗi thêm chương" }); }
+});
+
 app.post('/api/lessons', async (req, res) => {
   try {
-    const { course_id, title, video_url, duration, lesson_order } = req.body;
-    const processedUrl = extractYouTubeID(video_url);
-
-    const [result] = await pool.query(
-      "INSERT INTO lessons (course_id, title, video_url, duration, lesson_order) VALUES (?, ?, ?, ?, ?)",
-      [course_id, title, processedUrl, duration || 0, lesson_order || 1]
-    );
-
-    res.status(201).json({
-      message: "🎉 Thêm bài giảng thành công!",
-      id: result.insertId,
-      course_id,
-      title,
-      video_url: processedUrl
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Lỗi thêm bài giảng", details: error.message });
-  }
+    const { section_id, title, video_url, order_index } = req.body;
+    const [result] = await pool.query("INSERT INTO lessons (section_id, title, video_url, order_index) VALUES (?, ?, ?, ?)", [section_id, title, extractYouTubeID(video_url), order_index || 1]);
+    res.status(201).json({ id: result.insertId });
+  } catch (err) { res.status(500).json({ error: "Lỗi thêm bài" }); }
 });
 
-// 3. Cập nhật bài giảng
-app.put('/api/lessons/:id', async (req, res) => {
+
+// ================= API THỐNG KÊ ADMIN DASHBOARD (TỪ NHÁNH CỦA PHONG) =================
+
+// 1. Thống kê doanh thu theo tháng/ngày
+app.get('/api/stats/revenue', async (req, res) => {
   try {
-    const { id } = req.params;
-    const { title, video_url, duration, lesson_order } = req.body;
-    const processedUrl = extractYouTubeID(video_url);
-
-    await pool.query(
-      "UPDATE lessons SET title = ?, video_url = ?, duration = ?, lesson_order = ? WHERE id = ?",
-      [title, processedUrl, duration || 0, lesson_order || 1, id]
-    );
-
-    res.json({ message: "✅ Cập nhật bài giảng thành công!", video_id_saved: processedUrl });
-  } catch (error) {
-    res.status(500).json({ error: "Lỗi cập nhật bài giảng", details: error.message });
-  }
-});
-
-// 4. Xóa bài giảng
-app.delete('/api/lessons/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    await pool.query("DELETE FROM lessons WHERE id = ?", [id]);
-    res.json({ message: "🗑️ Đã xóa bài giảng thành công!" });
-  } catch (error) {
-    res.status(500).json({ error: "Lỗi xóa bài giảng", details: error.message });
-  }
-});
-
-// ================= API REVIEWS (CHẤM SAO) =================
-
-// GET: Lấy tất cả reviews của một khóa học
-app.get('/api/reviews/:course_id', async (req, res) => {
-  try {
-    const { course_id } = req.params;
-    const [rows] = await pool.query(
-      `SELECT r.id, r.rating, r.comment, r.created_at, 
-              u.name AS user_name, u.avatar_url
-       FROM reviews r
-       JOIN users u ON r.user_id = u.id
-       WHERE r.course_id = ?
-       ORDER BY r.created_at DESC`,
-      [course_id]
-    );
-
-    const [avgResult] = await pool.query(
-      'SELECT AVG(rating) AS avg_rating, COUNT(*) AS total_reviews FROM reviews WHERE course_id = ?',
-      [course_id]
-    );
-
-    res.json({
-      reviews: rows,
-      avg_rating: parseFloat(avgResult[0].avg_rating || 0).toFixed(1),
-      total_reviews: avgResult[0].total_reviews
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Lỗi lấy danh sách đánh giá', details: error.message });
-  }
-});
-
-// POST: Học viên gửi đánh giá mới hoặc cập nhật
-app.post('/api/reviews', async (req, res) => {
-  try {
-    const { user_id, course_id, rating, comment } = req.body;
-
-    if (!user_id || !course_id || !rating) {
-      return res.status(400).json({ error: 'Thiếu thông tin bắt buộc (user_id, course_id, rating)' });
-    }
-    if (rating < 1 || rating > 5) {
-      return res.status(400).json({ error: 'Rating phải nằm trong khoảng 1-5 sao' });
-    }
-
-    const [existing] = await pool.query(
-      'SELECT id FROM reviews WHERE user_id = ? AND course_id = ?',
-      [user_id, course_id]
-    );
-
-    if (existing.length > 0) {
-      await pool.query(
-        'UPDATE reviews SET rating = ?, comment = ? WHERE user_id = ? AND course_id = ?',
-        [rating, comment || '', user_id, course_id]
-      );
-      res.json({ message: '✅ Đã cập nhật đánh giá của bạn!' });
+    const { period } = req.query; 
+    let query;
+    if (period === 'daily') {
+      query = `
+        SELECT 
+          DATE(e.enrolled_at) AS label,
+          SUM(c.price) AS revenue,
+          COUNT(e.id) AS orders
+        FROM enrollments e
+        JOIN courses c ON e.course_id = c.id
+        WHERE e.enrolled_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+        GROUP BY DATE(e.enrolled_at)
+        ORDER BY label ASC
+      `;
     } else {
-      const [result] = await pool.query(
-        'INSERT INTO reviews (user_id, course_id, rating, comment) VALUES (?, ?, ?, ?)',
-        [user_id, course_id, rating, comment || '']
-      );
-      res.status(201).json({ message: '🎉 Cảm ơn bạn đã đánh giá!', id: result.insertId });
+      query = `
+        SELECT 
+          DATE_FORMAT(e.enrolled_at, '%Y-%m') AS label,
+          SUM(c.price) AS revenue,
+          COUNT(e.id) AS orders
+        FROM enrollments e
+        JOIN courses c ON e.course_id = c.id
+        GROUP BY DATE_FORMAT(e.enrolled_at, '%Y-%m')
+        ORDER BY label ASC
+        LIMIT 12
+      `;
     }
-  } catch (error) {
-    res.status(500).json({ error: 'Lỗi gửi đánh giá', details: error.message });
+    const [rows] = await pool.query(query);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi thống kê doanh thu', details: err.message });
+  }
+});
+
+// 2. Top 5 khóa học có nhiều học viên nhất
+app.get('/api/stats/top-courses', async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT 
+        c.id,
+        c.title,
+        c.thumbnail_url,
+        c.price,
+        COUNT(e.id) AS student_count,
+        COALESCE(AVG(r.rating), 0) AS avg_rating
+      FROM courses c
+      LEFT JOIN enrollments e ON c.id = e.course_id
+      LEFT JOIN reviews r ON c.id = r.course_id
+      GROUP BY c.id, c.title, c.thumbnail_url, c.price
+      ORDER BY student_count DESC
+      LIMIT 5
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi lấy top khóa học', details: err.message });
+  }
+});
+
+// 3. Tỉ lệ hoàn thành bài học trung bình
+app.get('/api/stats/completion-rate', async (req, res) => {
+  try {
+    const [overall] = await pool.query(`
+      SELECT 
+        COALESCE(AVG(progress_percent), 0) AS avg_completion,
+        COUNT(CASE WHEN progress_percent = 100 THEN 1 END) AS completed_count,
+        COUNT(CASE WHEN progress_percent > 0 AND progress_percent < 100 THEN 1 END) AS in_progress_count,
+        COUNT(CASE WHEN progress_percent = 0 THEN 1 END) AS not_started_count,
+        COUNT(*) AS total_enrollments
+      FROM enrollments
+    `);
+    const [byCourse] = await pool.query(`
+      SELECT 
+        c.title AS course_title,
+        COALESCE(AVG(e.progress_percent), 0) AS avg_completion,
+        COUNT(e.id) AS total_students
+      FROM enrollments e
+      JOIN courses c ON e.course_id = c.id
+      GROUP BY c.id, c.title
+      ORDER BY avg_completion DESC
+      LIMIT 5
+    `);
+    res.json({
+      overall: overall[0],
+      by_course: byCourse
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi thống kê hoàn thành', details: err.message });
+  }
+});
+
+// 4. Tổng số user mới đăng ký trong tháng + tổng quan hệ thống
+app.get('/api/stats/overview', async (req, res) => {
+  try {
+    const [newUsers] = await pool.query(`
+      SELECT COUNT(*) AS new_users_this_month
+      FROM users
+      WHERE MONTH(created_at) = MONTH(NOW()) AND YEAR(created_at) = YEAR(NOW())
+    `);
+    const [totalUsers] = await pool.query(`SELECT COUNT(*) AS total FROM users`);
+    const [totalCourses] = await pool.query(`SELECT COUNT(*) AS total FROM courses`);
+    const [totalEnrollments] = await pool.query(`SELECT COUNT(*) AS total FROM enrollments`);
+    const [totalRevenue] = await pool.query(`
+      SELECT COALESCE(SUM(c.price), 0) AS total_revenue
+      FROM enrollments e
+      JOIN courses c ON e.course_id = c.id
+    `);
+    const [revenueThisMonth] = await pool.query(`
+      SELECT COALESCE(SUM(c.price), 0) AS revenue_this_month
+      FROM enrollments e
+      JOIN courses c ON e.course_id = c.id
+      WHERE MONTH(e.enrolled_at) = MONTH(NOW()) AND YEAR(e.enrolled_at) = YEAR(NOW())
+    `);
+    res.json({
+      new_users_this_month: newUsers[0].new_users_this_month,
+      total_users: totalUsers[0].total,
+      total_courses: totalCourses[0].total,
+      total_enrollments: totalEnrollments[0].total,
+      total_revenue: totalRevenue[0].total_revenue,
+      revenue_this_month: revenueThisMonth[0].revenue_this_month
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi thống kê tổng quan', details: err.message });
   }
 });
 
@@ -412,5 +338,3 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server Backend đang chạy tại cổng ${PORT}`);
 });
-
-module.exports = app;
