@@ -8,12 +8,12 @@ const multer = require('multer');
 
 const app = express();
 app.use(cors({
-  origin: "https://frontend-video-learning-lid204s-projects.vercel.app",
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  credentials: true
+    origin: [
+        "https://frontend-video-learning-lid204s-projects.vercel.app"],
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true
 }));
 app.use(express.json());
-
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -46,14 +46,23 @@ const pool = mysql.createPool({
 pool.getConnection().then(async (connection) => {
     console.log("✅ MySQL Ready!");
     await connection.query(`
+      CREATE TABLE IF NOT EXISTS categories (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255) NOT NULL);
       CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100), email VARCHAR(100) UNIQUE, password VARCHAR(255) DEFAULT '123456', role ENUM('student', 'teacher', 'admin') DEFAULT 'student');
-      CREATE TABLE IF NOT EXISTS courses (id INT AUTO_INCREMENT PRIMARY KEY, title VARCHAR(255), thumbnail_url VARCHAR(255), price DECIMAL(10,2) DEFAULT 0.00, description TEXT);
+      CREATE TABLE IF NOT EXISTS courses (id INT AUTO_INCREMENT PRIMARY KEY, title VARCHAR(255), thumbnail_url VARCHAR(255), price DECIMAL(10,2) DEFAULT 0.00, description TEXT, category_id INT, FOREIGN KEY (category_id) REFERENCES categories(id));
       CREATE TABLE IF NOT EXISTS sections (id INT AUTO_INCREMENT PRIMARY KEY, course_id INT, title VARCHAR(255), order_index INT DEFAULT 0, FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE);
       CREATE TABLE IF NOT EXISTS lessons (id INT AUTO_INCREMENT PRIMARY KEY, section_id INT, title VARCHAR(255), video_url VARCHAR(255), duration INT DEFAULT 0, order_index INT DEFAULT 1, FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE);
     `);
+    
+    // 👇 THUỐC GIẢI: Tự động thêm cột teacher_id bị thiếu vào bảng courses
+    try {
+        await connection.query("ALTER TABLE courses ADD COLUMN teacher_id INT");
+        console.log("✅ Đã vá lỗi thêm cột teacher_id thành công!");
+    } catch (e) {
+        // Bỏ qua lỗi nếu cột này đã được tạo từ trước
+    }
+
     connection.release();
 }).catch(err => console.error("❌ DB Error:", err));
-
 
 // ================= API QUẢN LÝ USER (TỪ NHÁNH DANH) =================
 
@@ -145,20 +154,7 @@ app.get('/api/courses/:id', async (req, res) => {
   }
 });
 
-// 3. LƯU KHÓA HỌC (Từ nhánh Main)
-app.post('/api/courses', async (req, res) => {
-  try {
-    const { title, description, price, thumbnail_url } = req.body;
-    const [result] = await pool.query(
-      "INSERT INTO courses (title, description, price, thumbnail_url, teacher_id) VALUES (?, ?, ?, ?, ?)",
-      [title, description || '', price || 0, thumbnail_url || '', 1] 
-    );
-    res.status(201).json({ message: "OK", id: result.insertId });
-  } catch (err) { 
-    console.error(err);
-    res.status(500).json({ error: "Lỗi lưu khóa học" }); 
-  }
-});
+// LƯU Ý: MÌNH ĐÃ XÓA CÁI API app.post('/api/courses') BỊ TRÙNG VÀ BỊ LỖI Ở ĐÂY ĐI RỒI!
 
 // 4. XÓA KHÓA HỌC (Từ nhánh Main)
 app.delete('/api/courses/:id', async (req, res) => {
@@ -330,6 +326,46 @@ app.get('/api/stats/overview', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Lỗi thống kê tổng quan', details: err.message });
+  }
+});
+
+// ================= API DANH MỤC (MODULE CỦA DUY) =================
+// [GET] Lấy danh sách danh mục
+app.get('/api/categories', async (req, res) => {
+    try {
+        const [rows] = await pool.query("SELECT * FROM categories");
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: "Lỗi máy chủ" });
+    }
+});
+
+// [POST] Thêm danh mục mới (Dành cho Admin)
+app.post('/api/categories', async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!name) return res.status(400).json({ error: "Tên không hợp lệ" });
+        
+        const [result] = await pool.query("INSERT INTO categories (name) VALUES (?)", [name]);
+        res.json({ id: result.insertId, name });
+    } catch (err) {
+        res.status(500).json({ error: "Lỗi DB" });
+    }
+});
+
+// 3. LƯU KHÓA HỌC (ĐÃ SỬA: Thêm category_id và teacher_id)
+app.post('/api/courses', async (req, res) => {
+  try {
+    const { title, description, price, thumbnail_url, category_id } = req.body; 
+    
+    const [result] = await pool.query(
+      "INSERT INTO courses (title, description, price, thumbnail_url, teacher_id, category_id) VALUES (?, ?, ?, ?, ?, ?)",
+      [title, description || '', price || 0, thumbnail_url || '', 1, category_id || null] 
+    );
+    res.status(201).json({ message: "OK", id: result.insertId });
+  } catch (err) { 
+    console.error(err);
+    res.status(500).json({ error: "Lỗi lưu khóa học" }); 
   }
 });
 
