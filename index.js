@@ -9,9 +9,7 @@ const multer = require('multer');
 const app = express();
 app.use(cors({
     origin: [
-        "https://frontend-video-learning-lid204s-projects.vercel.app",
-        "http://localhost:5173"
-    ],
+        "https://frontend-video-learning-lid204s-projects.vercel.app"],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true
 }));
