@@ -1,0 +1,4 @@
+Fixed merge/conflict cleanup:
+- Removed duplicate app initialization in index.js
+- Kept flexible CORS config and updated backend logic
+- Removed .git and node_modules from deliverable
