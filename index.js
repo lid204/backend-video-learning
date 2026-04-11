@@ -541,7 +541,35 @@ app.post('/api/enrollments', async (req, res) => {
     res.status(500).json({ error: 'Lỗi đăng ký khóa học', details: err.message });
   }
 });
+/* =============================
+   Checkout (Thanh toán & Mở khóa)
+============================= */
+app.post('/api/checkout', async (req, res) => {
+  try {
+    const { user_id, cartItems } = req.body;
 
+    if (!user_id || !cartItems || !cartItems.length) {
+      return res.status(400).json({ error: 'Thiếu thông tin người dùng hoặc giỏ hàng trống!' });
+    }
+
+    // Lặp qua từng khóa học trong giỏ và thêm vào bảng enrollments
+    for (let item of cartItems) {
+      try {
+        // Dùng INSERT IGNORE để nếu lỡ họ mua rồi thì hệ thống không bị lỗi
+        await pool.query(
+          'INSERT IGNORE INTO enrollments (user_id, course_id) VALUES (?, ?)',
+          [user_id, item.id]
+        );
+      } catch (e) {
+        console.log(`Lỗi khi mở khóa khóa học ${item.id}:`, e.message);
+      }
+    }
+
+    res.status(200).json({ message: 'Thanh toán thành công! Khóa học đã được mở.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi hệ thống khi thanh toán', details: err.message });
+  }
+});
 // Alias nếu frontend cũ gọi route khác
 app.post('/api/enroll', async (req, res) => {
   req.url = '/api/enrollments';
