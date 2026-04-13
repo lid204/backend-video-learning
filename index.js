@@ -684,7 +684,21 @@ app.post('/api/sections', async (req, res) => {
     res.status(500).json({ error: 'Lỗi thêm chương', details: err.message });
   }
 });
-
+/* =============================
+   Thêm API này để Frontend gọi danh sách chương (Fix lỗi 404)
+============================= */
+app.get('/api/sections/course/:course_id', async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT * FROM sections WHERE course_id = ? ORDER BY order_index ASC, id ASC',
+      [req.params.course_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("Lỗi GET sections:", err);
+    res.status(500).json({ error: 'Lỗi lấy danh sách chương', details: err.message });
+  }
+});
 /* =============================
    Lessons
 ============================= */
