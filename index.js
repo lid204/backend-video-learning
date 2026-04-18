@@ -214,6 +214,25 @@ async function ensureDatabase() {
         comment TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS quizzes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        lesson_id INT NOT NULL,
+        question TEXT NOT NULL,
+        options JSON NOT NULL,
+        correct_answer VARCHAR(255) NOT NULL,
+        stop_time_seconds INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS progress (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        lesson_id INT NOT NULL,
+        watched_seconds INT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_user_lesson (user_id, lesson_id)
+      );
     `);
 
     await ensureColumn(connection, 'users', 'phone', 'VARCHAR(20) NULL');
@@ -241,6 +260,15 @@ async function ensureDatabase() {
 
     await ensureColumn(connection, 'reviews', 'comment', 'TEXT NULL');
     await ensureColumn(connection, 'reviews', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
+
+    await ensureColumn(connection, 'quizzes', 'question', 'TEXT NOT NULL');
+    await ensureColumn(connection, 'quizzes', 'options', 'JSON NOT NULL');
+    await ensureColumn(connection, 'quizzes', 'correct_answer', 'VARCHAR(255) NOT NULL');
+    await ensureColumn(connection, 'quizzes', 'stop_time_seconds', 'INT NOT NULL DEFAULT 0');
+    await ensureColumn(connection, 'quizzes', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
+
+    await ensureColumn(connection, 'progress', 'watched_seconds', 'INT NOT NULL DEFAULT 0');
+    await ensureColumn(connection, 'progress', 'updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
 
     // Seed tối thiểu
     await connection.query(`
@@ -830,6 +858,88 @@ app.get('/api/lessons/:id/quizzes', async (req, res) => {
     res.json(normalized);
   } catch (err) {
     res.status(500).json({ error: 'Lỗi lấy quiz', details: err.message });
+  }
+});
+
+app.post('/api/quizzes', async (req, res) => {
+  try {
+    const { lesson_id, question, options, correct_answer, stop_time_seconds = 0 } = req.body;
+
+    const normalizedOptions = Array.isArray(options)
+      ? options.map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+
+    if (!lesson_id || !question || normalizedOptions.length < 2 || !correct_answer) {
+      return res.status(400).json({
+        error: 'Thiếu lesson_id, question, correct_answer hoặc options chưa đủ tối thiểu 2 đáp án'
+      });
+    }
+
+    if (!normalizedOptions.includes(String(correct_answer).trim())) {
+      return res.status(400).json({ error: 'Đáp án đúng phải nằm trong danh sách lựa chọn' });
+    }
+
+    const [lessonRows] = await pool.query('SELECT id FROM lessons WHERE id = ? LIMIT 1', [lesson_id]);
+    if (!lessonRows.length) {
+      return res.status(404).json({ error: 'Không tìm thấy bài học để gắn quiz' });
+    }
+
+    const [result] = await pool.query(
+      `
+        INSERT INTO quizzes (lesson_id, question, options, correct_answer, stop_time_seconds)
+        VALUES (?, ?, ?, ?, ?)
+      `,
+      [lesson_id, question, JSON.stringify(normalizedOptions), String(correct_answer).trim(), Number(stop_time_seconds) || 0]
+    );
+
+    res.status(201).json({
+      message: 'Tạo quiz thành công',
+      id: result.insertId
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi tạo quiz', details: err.message });
+  }
+});
+
+app.put('/api/quizzes/:id', async (req, res) => {
+  try {
+    const { question, options, correct_answer, stop_time_seconds = 0 } = req.body;
+
+    const normalizedOptions = Array.isArray(options)
+      ? options.map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+
+    if (!question || normalizedOptions.length < 2 || !correct_answer) {
+      return res.status(400).json({
+        error: 'Thiếu question, correct_answer hoặc options chưa đủ tối thiểu 2 đáp án'
+      });
+    }
+
+    if (!normalizedOptions.includes(String(correct_answer).trim())) {
+      return res.status(400).json({ error: 'Đáp án đúng phải nằm trong danh sách lựa chọn' });
+    }
+
+    await pool.query(
+      `
+        UPDATE quizzes
+        SET question = ?, options = ?, correct_answer = ?, stop_time_seconds = ?
+        WHERE id = ?
+      `,
+      [question, JSON.stringify(normalizedOptions), String(correct_answer).trim(), Number(stop_time_seconds) || 0, req.params.id]
+    );
+
+    res.json({ message: 'Cập nhật quiz thành công' });
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi cập nhật quiz', details: err.message });
+  }
+});
+
+app.delete('/api/quizzes/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM quizzes WHERE id = ?', [req.params.id]);
+    res.json({ message: 'Xóa quiz thành công' });
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi xóa quiz', details: err.message });
   }
 });
 
